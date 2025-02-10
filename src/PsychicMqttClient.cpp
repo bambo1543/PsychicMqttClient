@@ -455,7 +455,7 @@ void PsychicMqttClient::_onMessage(esp_mqtt_event_handle_t &event)
     // printf("CURRENT_DATA_OFFSET=%d\r\n", event->current_data_offset);
 
     // Check if we are dealing with a simple message
-    Serial.println("PSYCHIC MQTT data_len/total_data_len: " + String(event->data_len) + "/" + String(event->total_data_len));
+//    Serial.println("PSYCHIC MQTT data_len/total_data_len: " + String(event->data_len) + "/" + String(event->total_data_len));
     if (event->total_data_len == event->data_len)
     {
         ESP_LOGV(TAG, "MQTT_EVENT_DATA_SINGLE");
@@ -479,23 +479,18 @@ void PsychicMqttClient::_onMessage(esp_mqtt_event_handle_t &event)
 //    }
 
         int data_len = event->data_len;
-        const uint8_t *byte_data = (const uint8_t *)event->data;
         uint8_t *buffer = static_cast<uint8_t *>(malloc(data_len));
-        if (buffer != NULL) {
-            memcpy(buffer, byte_data, data_len);
-            // Process the copied buffer here
+        memcpy(buffer, event->data, data_len);
+        // Process the copied buffer here
 
-            for (auto callback: _onMessageBinaryUserCallbacks) {
-                if (callback.topic == nullptr || _isTopicMatch(topic, callback.topic)) {
-                    callback.callback(topic, buffer, data_len, event->retain, event->qos, event->dup);
-                }
+        for (auto callback: _onMessageBinaryUserCallbacks) {
+            if (callback.topic == nullptr || _isTopicMatch(topic, callback.topic)) {
+                callback.callback(topic, buffer, data_len, event->retain, event->qos, event->dup);
             }
-
-            // Free the buffer after use
-            free(buffer);
-        } else {
-            printf("Failed to allocate memory for buffer\n");
         }
+
+        // Free the buffer after use
+        free(buffer);
     }
 
         // Check if we are dealing with a first multipart message
@@ -508,11 +503,7 @@ void PsychicMqttClient::_onMessage(esp_mqtt_event_handle_t &event)
 //    strncpy(_buffer, (char *)event->data, event->data_len);
 
         _bufferBinary = (uint8_t*)malloc(event->total_data_len);
-        if (_bufferBinary != NULL) {
-            memcpy(_bufferBinary, (uint8_t*)event->data, event->data_len);
-        } else {
-            printf("Failed to allocate memory for buffer\n");
-        }
+        memcpy(_bufferBinary, (uint8_t*)event->data, event->data_len);
 
         // Store the topic for later use, as it is only sent with the first message
         _topic = (char *)malloc(event->topic_len + 1);
