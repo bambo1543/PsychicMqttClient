@@ -212,6 +212,12 @@ PsychicMqttClient &PsychicMqttClient::onMessage(OnMessageUserCallback callback)
   _onMessageUserCallbacks.push_back(subscription);
   return *this;
 }
+PsychicMqttClient &PsychicMqttClient::onMessageBinary(OnMessageBinaryUserCallback callback)
+{
+  OnMessageBinaryUserCallback_t subscription = {nullptr, 0, callback};
+  _onMessageBinaryUserCallbacks.push_back(subscription);
+  return *this;
+}
 
 PsychicMqttClient &PsychicMqttClient::onTopic(const char *topic, int qos, OnMessageUserCallback callback)
 {
@@ -398,6 +404,11 @@ void PsychicMqttClient::_onConnect(esp_mqtt_event_handle_t &event)
     if (topic.topic != nullptr)
       subscribe(topic.topic, topic.qos);
   }
+  for (auto topic : _onMessageBinaryUserCallbacks)
+  {
+    if (topic.topic != nullptr)
+      subscribe(topic.topic, topic.qos);
+  }
 
   for (auto callback : _onConnectUserCallbacks)
   {
@@ -435,83 +446,120 @@ void PsychicMqttClient::_onUnsubscribe(esp_mqtt_event_handle_t &event)
 
 void PsychicMqttClient::_onMessage(esp_mqtt_event_handle_t &event)
 {
-  // ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-  // printf("MSG_ID=%d\r\n", event->msg_id);
-  // printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-  // printf("DATA=%.*s\r\n", event->data_len, event->data);
-  // printf("DATA_LEN=%d\r\n", event->data_len);
-  // printf("TOTAL_DATA_LEN=%d\r\n", event->total_data_len);
-  // printf("CURRENT_DATA_OFFSET=%d\r\n", event->current_data_offset);
+    // ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+    // printf("MSG_ID=%d\r\n", event->msg_id);
+    // printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+    // printf("DATA=%.*s\r\n", event->data_len, event->data);
+    // printf("DATA_LEN=%d\r\n", event->data_len);
+    // printf("TOTAL_DATA_LEN=%d\r\n", event->total_data_len);
+    // printf("CURRENT_DATA_OFFSET=%d\r\n", event->current_data_offset);
 
-  // Check if we are dealing with a simple message
-  if (event->total_data_len == event->data_len)
-  {
-    ESP_LOGV(TAG, "MQTT_EVENT_DATA_SINGLE");
-    // Copy the characters from data->data_ptr to c-string
-    char payload[event->data_len + 1];
-    strncpy(payload, (char *)event->data, event->data_len);
-    payload[event->data_len] = '\0';
-    ESP_LOGV(TAG, "Payload=%s", payload);
-
-    char topic[event->topic_len + 1];
-    strncpy(topic, (char *)event->topic, event->topic_len);
-    topic[event->topic_len] = '\0';
-    ESP_LOGV(TAG, "Topic=%s", topic);
-
-    for (auto callback : _onMessageUserCallbacks)
+    // Check if we are dealing with a simple message
+    Serial.println("PSYCHIC MQTT data_len/total_data_len: " + String(event->data_len) + "/" + String(event->total_data_len));
+    if (event->total_data_len == event->data_len)
     {
-      if (callback.topic == nullptr || _isTopicMatch(topic, callback.topic))
-      {
-        callback.callback(topic, payload, event->retain, event->qos, event->dup);
-      }
-    }
-  }
+        ESP_LOGV(TAG, "MQTT_EVENT_DATA_SINGLE");
+        // Copy the characters from data->data_ptr to c-string
+//    char payload[event->data_len + 1];
+//    strncpy(payload, (char *)event->data, event->data_len);
+//    payload[event->data_len] = '\0';
+//    ESP_LOGV(TAG, "Payload=%s", payload);
 
-  // Check if we are dealing with a first multipart message
-  else if (event->current_data_offset == 0)
-  {
-    ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_FIRST");
-    // Allocate memory for the buffer
-    _buffer = (char *)malloc(event->total_data_len + 1);
-    // Copy the characters from even->data to _buffer
-    strncpy(_buffer, (char *)event->data, event->data_len);
+        char topic[event->topic_len + 1];
+        strncpy(topic, (char *)event->topic, event->topic_len);
+        topic[event->topic_len] = '\0';
+        ESP_LOGV(TAG, "Topic=%s", topic);
 
-    // Store the topic for later use, as it is only sent with the first message
-    _topic = (char *)malloc(event->topic_len + 1);
-    strncpy(_topic, (char *)event->topic, event->topic_len);
-    _topic[event->topic_len] = '\0';
-  }
+//    for (auto callback : _onMessageUserCallbacks)
+//    {
+//      if (callback.topic == nullptr || _isTopicMatch(topic, callback.topic))
+//      {
+//        callback.callback(topic, payload, event->retain, event->qos, event->dup);
+//      }
+//    }
 
-  // Check if we are on the last message
-  else if (event->current_data_offset + event->data_len == event->total_data_len)
-  {
-    ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_LAST");
-    // Copy the characters from even->data to _buffer
-    strncpy(_buffer + event->current_data_offset, (char *)event->data, event->data_len);
-    _buffer[event->total_data_len] = '\0';
-    ESP_LOGV(TAG, "Topic=%s", _topic);
-    ESP_LOGV(TAG, "Payload=%s", _buffer);
+        int data_len = event->data_len;
+        const uint8_t *byte_data = (const uint8_t *)event->data;
+        uint8_t *buffer = static_cast<uint8_t *>(malloc(data_len));
+        if (buffer != NULL) {
+            memcpy(buffer, byte_data, data_len);
+            // Process the copied buffer here
 
-    for (auto callback : _onMessageUserCallbacks)
-    {
-      if (callback.topic == nullptr || _isTopicMatch(_topic, callback.topic))
-      {
-        callback.callback(_topic, _buffer, event->retain, event->qos, event->dup);
-      }
+            for (auto callback: _onMessageBinaryUserCallbacks) {
+                if (callback.topic == nullptr || _isTopicMatch(topic, callback.topic)) {
+                    callback.callback(topic, buffer, data_len, event->retain, event->qos, event->dup);
+                }
+            }
+
+            // Free the buffer after use
+            free(buffer);
+        } else {
+            printf("Failed to allocate memory for buffer\n");
+        }
     }
 
-    // Free the memory
-    free(_buffer);
-    free(_topic);
-  }
+        // Check if we are dealing with a first multipart message
+    else if (event->current_data_offset == 0)
+    {
+        ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_FIRST");
+        // Allocate memory for the buffer
+//    _buffer = (char *)malloc(event->total_data_len + 1);
+        // Copy the characters from even->data to _buffer
+//    strncpy(_buffer, (char *)event->data, event->data_len);
 
-  // Otherwise, we are in the middle of the message
-  else
-  {
-    // copy the characters from even->data to _buffer
-    strncpy(_buffer + event->current_data_offset, (char *)event->data, event->data_len);
-    ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART");
-  }
+        _bufferBinary = (uint8_t*)malloc(event->total_data_len);
+        if (_bufferBinary != NULL) {
+            memcpy(_bufferBinary, (uint8_t*)event->data, event->data_len);
+        } else {
+            printf("Failed to allocate memory for buffer\n");
+        }
+
+        // Store the topic for later use, as it is only sent with the first message
+        _topic = (char *)malloc(event->topic_len + 1);
+        strncpy(_topic, (char *)event->topic, event->topic_len);
+        _topic[event->topic_len] = '\0';
+    }
+
+        // Check if we are on the last message
+    else if (event->current_data_offset + event->data_len == event->total_data_len)
+    {
+        ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_LAST");
+
+//       Copy the characters from even->data to _buffer
+//    strncpy(_buffer + event->current_data_offset, (char *)event->data, event->data_len);
+//    _buffer[event->total_data_len] = '\0';
+        ESP_LOGV(TAG, "Topic=%s", _topic);
+//    ESP_LOGV(TAG, "Payload=%s", _buffer);
+
+        memcpy(_bufferBinary + event->current_data_offset, (uint8_t*)event->data, event->data_len);
+        for (auto callback: _onMessageBinaryUserCallbacks) {
+            if (callback.topic == nullptr || _isTopicMatch(_topic, callback.topic)) {
+                callback.callback(_topic, _bufferBinary, event->total_data_len, event->retain, event->qos, event->dup);
+            }
+        }
+
+//    for (auto callback : _onMessageUserCallbacks)
+//    {
+//      if (callback.topic == nullptr || _isTopicMatch(_topic, callback.topic))
+//      {
+//        callback.callback(_topic, _buffer, event->retain, event->qos, event->dup);
+//      }
+//    }
+
+        // Free the memory
+//    free(_buffer);
+        free(_bufferBinary);
+        free(_topic);
+    }
+
+        // Otherwise, we are in the middle of the message
+    else
+    {
+        ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART");
+        memcpy(_bufferBinary + event->current_data_offset, (uint8_t*)event->data, event->data_len);
+        // copy the characters from even->data to _buffer
+//    strncpy(_buffer + event->current_data_offset, (char *)event->data, event->data_len);
+    }
 }
 
 void PsychicMqttClient::_onPublish(esp_mqtt_event_handle_t &event)

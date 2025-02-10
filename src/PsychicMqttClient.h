@@ -53,6 +53,7 @@ typedef std::function<void(bool sessionPresent)> OnDisconnectUserCallback;
 typedef std::function<void(int msgId)> OnSubscribeUserCallback;
 typedef std::function<void(int msgId)> OnUnsubscribeUserCallback;
 typedef std::function<void(char *topic, char *payload, int retain, int qos, bool dup)> OnMessageUserCallback;
+typedef std::function<void(char *topic, u_int8_t *data, int length, int retain, int qos, bool dup)> OnMessageBinaryUserCallback;
 typedef std::function<void(int msgId)> OnPublishUserCallback;
 typedef std::function<void(esp_mqtt_error_codes_t error)> OnErrorUserCallback;
 
@@ -62,6 +63,13 @@ typedef struct
   int qos;
   OnMessageUserCallback callback;
 } OnMessageUserCallback_t;
+
+typedef struct
+{
+  char *topic;
+  int qos;
+  OnMessageBinaryUserCallback callback;
+} OnMessageBinaryUserCallback_t;
 
 /**
  * @class PsychicMqttClient
@@ -244,6 +252,7 @@ public:
    * @return A reference to the PsychicMqttClient instance.
    */
   PsychicMqttClient &onMessage(OnMessageUserCallback callback);
+  PsychicMqttClient &onMessageBinary(OnMessageBinaryUserCallback callback);
 
   /**
    * @brief Registers a callback function to be called when a message is
@@ -350,6 +359,7 @@ private:
   bool _stopMqttClient = false;
 
   char *_buffer = nullptr;
+  uint8_t *_bufferBinary = nullptr;
   char *_topic = nullptr;
 
   static void _onMqttEventStatic(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
@@ -361,6 +371,7 @@ private:
   std::vector<OnSubscribeUserCallback> _onSubscribeUserCallbacks;
   std::vector<OnUnsubscribeUserCallback> _onUnsubscribeUserCallbacks;
   std::vector<OnMessageUserCallback_t> _onMessageUserCallbacks;
+  std::vector<OnMessageBinaryUserCallback_t> _onMessageBinaryUserCallbacks;
   std::vector<OnPublishUserCallback> _onPublishUserCallbacks;
   std::vector<OnErrorUserCallback> _onErrorUserCallbacks;
 
